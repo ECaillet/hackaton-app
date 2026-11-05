@@ -10,6 +10,9 @@ services:
     command: sleep infinity
     volumes:
       - .:/workspace:cached
+    extra_hosts:
+      # Rend l'hôte joignable sous Linux (Docker Desktop le fait déjà)
+      - host.docker.internal:host-gateway
     depends_on:
       db:
         condition: service_healthy
@@ -30,3 +33,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+ # IA locale en conteneur, optionnelle : docker compose up -d ollama
+  ollama:
+    image: ollama/ollama:0.40.13
+    profiles: [ollama]
+    volumes:
+      - ollama-data:/root/.ollama
+
+volumes:
+  ollama-data:
