@@ -1,7 +1,7 @@
 # Hackathon app
 
 Application de démonstration composée d'un front web, d'une API Node.js,
-d'une base PostgreSQL et d'un appel à un modèle de langage via l'API Mistral.
+d'une base PostgreSQL et d'un modèle de langage local via Ollama.
 
 Ce guide décrit les commandes à effectuer depuis un clone neuf. Les commandes
 Docker se lancent sur votre machine hôte, sauf indication contraire. Les
@@ -17,9 +17,9 @@ Installez les outils suivants :
 - **Git**
 - **Docker Desktop** sur Windows/macOS, ou **Docker Engine et Docker Compose
   v2** sur Linux
+- **Ollama** avec le modèle `llama3.2:1b`
 - **Visual Studio Code**
 - L'extension VS Code **Dev Containers**
-- Une clé API Mistral pour tester une vraie réponse IA
 
 Vérifiez que Docker fonctionne avant de continuer :
 
@@ -37,7 +37,8 @@ commande `code` n'existe pas, ouvrez VS Code manuellement et utilisez
 
 Le dev container fournit Node.js 24 et le client PostgreSQL. Compose démarre
 PostgreSQL 17. Il n'est pas nécessaire d'installer Node.js ou PostgreSQL sur
-votre machine hôte.
+votre machine hôte. Ollama, lui, doit tourner sur la machine hôte pour que
+l'application puisse le joindre.
 
 ## 2. Cloner le dépôt
 
@@ -77,9 +78,18 @@ Si la palette ne propose pas cette commande, installez l'extension **Dev
 Containers** (identifiant `ms-vscode-remote.remote-containers`), puis rouvrez
 le dossier et recommencez.
 
-### Configurer la clé IA
+### Démarrer Ollama
 
-Dans le terminal intégré de VS Code, vérifiez que le fichier local existe :
+Dans un terminal sur la machine hôte (pas dans le conteneur), lancez le modèle.
+Cette commande démarre Ollama et télécharge le modèle s'il n'est pas encore
+installé :
+
+```sh
+ollama run llama3.2:1b
+```
+
+Laissez Ollama tourner pendant l'utilisation de l'application. Dans le terminal
+intégré de VS Code, vérifiez que le fichier de configuration existe :
 
 ```sh
 test -f api/.env && echo "api/.env existe" || echo "api/.env est absent"
@@ -91,15 +101,8 @@ Si le fichier est absent, créez-le à partir du modèle :
 cp api/.env.example api/.env
 ```
 
-Ouvrez `api/.env` dans l'explorateur VS Code et remplacez la valeur de
-`AI_API_KEY` par une clé Mistral valide. Le fichier contient aussi les réglages
-`DATABASE_URL`, `AI_BASE_URL` et `AI_MODEL`; pour le démarrage local, conservez
-les valeurs fournies et ne modifiez que la clé, sauf instruction de l'équipe.
-
-Ne collez jamais une vraie clé dans une commande, un commit, une capture
-d'écran ou une conversation publique. `api/.env` est ignoré par Git. Une clé
-est nécessaire pour obtenir une réponse IA; les autres contrôles locaux
-(lint, format et build) n'en ont pas besoin.
+La configuration utilise `http://host.docker.internal:11434/v1` et le modèle
+`llama3.2:1b`; aucune clé API n'est nécessaire. `api/.env` est ignoré par Git.
 
 ### Lancer l'application
 
@@ -150,9 +153,9 @@ docker compose exec -w /workspace dev npm ci
 docker compose exec -w /workspace dev sh -c 'test -f api/.env || cp api/.env.example api/.env'
 ```
 
-Ouvrez ensuite `api/.env` avec un éditeur de texte sur la machine hôte et
-remplacez `AI_API_KEY=votre-clé-mistral` par votre clé. Le répertoire du projet
-est partagé avec le conteneur, donc le fichier est visible des deux côtés.
+Ollama doit être installé et lancé sur la machine hôte avec `llama3.2:1b`.
+Le répertoire du projet est partagé avec le conteneur, donc `api/.env` est
+visible des deux côtés.
 
 Démarrez les serveurs au premier plan :
 
@@ -207,9 +210,9 @@ curl -i -X POST http://localhost:3000/api/questions \
 ```
 
 Résultat attendu : statut HTTP `201` et un objet JSON avec `question`, une
-`answer` non vide, et un identifiant. Cet appel contacte Mistral et peut être
-facturé. Si la réponse est une erreur IA, vérifiez que `api/.env` contient la
-bonne clé, puis arrêtez et relancez `npm run dev` pour recharger la
+`answer` non vide, et un identifiant. Cet appel utilise le modèle local
+Ollama. Si la réponse est une erreur IA, vérifiez qu'Ollama tourne et que le
+modèle est installé, puis arrêtez et relancez `npm run dev` pour recharger la
 configuration.
 
 ### Confirmer l'enregistrement dans PostgreSQL
@@ -337,22 +340,18 @@ depuis votre machine.
   `/api` sont transmises à l'API locale.
 - **PostgreSQL 17** : stockage relationnel des questions/réponses avec
   initialisation reproductible par Compose.
-- **Mistral API (`mistral-small-latest`)** : fournisseur externe configuré par
-  variables d'environnement, sans clé intégrée au code. Chaque soumission
-  appelle le fournisseur. Les coûts dépendent du modèle, des tarifs en vigueur
-  et du nombre de tokens; consulter les
-  [tarifs API Mistral](https://mistral.ai/pricing/).
+- **Ollama (`llama3.2:1b`)** : modèle local configuré par variables
+  d'environnement et exécuté sur la machine hôte. Les questions ne sont pas
+  envoyées à un fournisseur externe et n'entraînent pas de frais d'API.
 
-**Budget :** aucun plafond de dépense n'est configuré dans le dépôt. Avant une
-démonstration avec une clé réelle, le responsable doit fixer un budget et des
-limites d'utilisation dans le compte fournisseur, puis surveiller la
-consommation. Les contrôles lint, format et build ne font pas d'appel IA.
+**Budget :** aucun coût d'API n'est prévu avec Ollama local; son exécution
+utilise les ressources de la machine hôte.
 
 **Hors périmètre actuel :** authentification des utilisateurs, limitation de
 débit, RAG, déploiement de production et automatisation de tests fonctionnels.
 Le service Python FastAPI/Ollama dans `ai/` est une expérimentation distincte :
 il n'est pas lancé par Compose et n'est pas appelé par l'application web/API
-principale, qui utilise directement Mistral.
+principale, qui appelle directement l'API locale d'Ollama.
 
 ## 10. GitHub et exécution multi-machine
 
